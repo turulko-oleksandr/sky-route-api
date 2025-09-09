@@ -1,8 +1,9 @@
 from django.db import transaction
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from sky_route_api.models import (Airport, Route, Flight,
-                                  Airplane, Crew, AirplaneType)
+                                  Airplane, Crew, AirplaneType, Ticket)
 
 
 class AirPortSerializer(serializers.ModelSerializer):
@@ -163,3 +164,64 @@ class FlightSerializer(serializers.ModelSerializer):
                     instance.crew.add(crew_member)
 
         return instance
+
+
+class TicketSerializer(serializers.ModelSerializer):
+    def validate(self, attrs):
+        data = super(TicketSerializer, self).validate(attrs=attrs)
+        flight = attrs.get("flight")
+        row = attrs.get("row")
+        seat = attrs.get("seat")
+
+        if row > flight.airplane.rows:
+            raise ValidationError(
+                {"row": "Row is greater than flight.airplane.rows"}
+            )
+        if seat > flight.airplane.seats_in_row:
+            raise ValidationError(
+                {"seat": "Seat is greater than flight.airplane.seats_in_row"}
+            )
+
+        if Ticket.objects.filter(flight=flight, row=row, seat=seat).exists():
+            raise ValidationError(
+                {"seat": "This ticket already exists."}
+            )
+
+        return data
+
+    class Meta:
+        model = Ticket
+        fields = ("id", "row", "seat", "flight")
+
+
+class FlightListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Flight
+        fields = ("id", "departure_time", "arrival_time", "route", "airplane")
+
+class TakenSeatsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Ticket
+        fields = ("row", "seat")
+
+
+class FlightDetailSerializer(serializers.ModelSerializer):
+    route = RouteSerializer(many=False, read_only=True)
+    airplane = AirplaneSerializer(many=False, read_only=True)
+    crew = CrewSerializer(many=True, read_only=True)
+    taken_seats = TakenSeatsSerializer(
+        source="tickets", many=True, read_only=True
+    )
+
+    class Meta:
+        model = Flight
+        fields = (
+            "id",
+            "departure_time",
+            "arrival_time",
+            "route",
+            "airplane",
+            "crew",
+            "taken_seats",
+        )
+
