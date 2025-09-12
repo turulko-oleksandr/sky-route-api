@@ -3,7 +3,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
 from sky_route_api.models import (Airport, Route, Flight,
-                                  Airplane, Crew, AirplaneType, Ticket)
+                                  Airplane, Crew, AirplaneType, Ticket, Order)
 
 
 class AirPortSerializer(serializers.ModelSerializer):
@@ -59,7 +59,9 @@ class AirplaneSerializer(serializers.ModelSerializer):
         airplane_type_data = validated_data.pop('airplane_type', None)
         with transaction.atomic():
             if airplane_type_data:
-                airplane_type, _ = AirplaneType.objects.get_or_create(**airplane_type_data)
+                airplane_type, _ = AirplaneType.objects.get_or_create(
+                    **airplane_type_data
+                )
                 instance.airplane_type = airplane_type
 
             for attr, value in validated_data.items():
@@ -169,35 +171,31 @@ class FlightSerializer(serializers.ModelSerializer):
 class TicketSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         data = super(TicketSerializer, self).validate(attrs=attrs)
-        flight = attrs.get("flight")
-        row = attrs.get("row")
-        seat = attrs.get("seat")
+        flight = attrs.get('flight')
+        seat = attrs.get('seat')
 
-        if row > flight.airplane.rows:
-            raise ValidationError(
-                {"row": "Row is greater than flight.airplane.rows"}
-            )
         if seat > flight.airplane.seats_in_row:
             raise ValidationError(
-                {"seat": "Seat is greater than flight.airplane.seats_in_row"}
+                {'seat': 'Seat is greater than flight.airplane.seats_in_row'}
             )
 
-        if Ticket.objects.filter(flight=flight, row=row, seat=seat).exists():
+        if Ticket.objects.filter(flight=flight, seat=seat).exists():
             raise ValidationError(
-                {"seat": "This ticket already exists."}
+                {'seat': 'This ticket already exists.'}
             )
 
         return data
 
     class Meta:
         model = Ticket
-        fields = ("id", "row", "seat", "flight")
+        fields = ('id', 'seat', 'flight')
 
 
 class FlightListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Flight
-        fields = ("id", "departure_time", "arrival_time", "route", "airplane")
+        fields = ('id', 'departure_time', 'arrival_time', 'route', 'airplane')
+
 
 class TakenSeatsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -206,22 +204,108 @@ class TakenSeatsSerializer(serializers.ModelSerializer):
 
 
 class FlightDetailSerializer(serializers.ModelSerializer):
-    route = RouteSerializer(many=False, read_only=True)
-    airplane = AirplaneSerializer(many=False, read_only=True)
+    route = RouteSerializer(read_only=True)
+    airplane = AirplaneSerializer(read_only=True)
     crew = CrewSerializer(many=True, read_only=True)
-    taken_seats = TakenSeatsSerializer(
-        source="tickets", many=True, read_only=True
-    )
+    taken_seats = serializers.SerializerMethodField()
 
     class Meta:
         model = Flight
         fields = (
-            "id",
-            "departure_time",
-            "arrival_time",
-            "route",
-            "airplane",
-            "crew",
-            "taken_seats",
+            'id',
+            'departure_time',
+            'arrival_time',
+            'route',
+            'airplane',
+            'crew',
+            'taken_seats',
         )
 
+    @staticmethod
+    def get_taken_seats(obj):
+        ticket_set = obj.ticket_set.all()
+        return TakenSeatsSerializer(ticket_set, many=True).data
+
+class TicketForOrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Ticket
+        fields = ('seat',)
+        ordering_fields = ('seat',)
+
+class OrderSerializer(serializers.ModelSerializer):
+    tickets = TicketForOrderSerializer(many=True, read_only=False)
+
+    class Meta:
+        model = Order
+        fields = ('id', 'flight', 'tickets', 'created_at')
+
+    def create(self, validated_data):
+        tickets_data = validated_data.pop('tickets', [])
+        with transaction.atomic():
+            order = Order.objects.create(**validated_data)
+
+            for ticket_data in tickets_data:
+                flight = validated_data['flight']
+                seat = ticket_data['seat']
+                seats_in_row = flight.airplane.seats_in_row
+
+                row = (seat - 1) // seats_in_row + 1
+
+                if Ticket.objects.filter(
+                        flight=flight,
+                        row=row,
+                        seat=seat
+                ).exists():
+                    raise ValidationError(
+                        {
+                            'seat': f'Seat {seat} '
+                                 f'(row {row}) is already '
+                                    f'taken for this flight.'
+                        }
+                    )
+
+                Ticket.objects.create(
+                    order=order,
+                    flight=flight,
+                    row=row,
+                    **ticket_data
+                )
+        return order
+
+    def update(self, instance, validated_data):
+        tickets_data = validated_data.pop('tickets', [])
+        with transaction.atomic():
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
+
+            instance.tickets.all().delete()
+
+            flight = instance.flight
+            seats_in_row = flight.airplane.seats_in_row
+
+            for ticket_data in tickets_data:
+                seat = ticket_data['seat']
+                row = (seat - 1) // seats_in_row + 1
+
+                if Ticket.objects.filter(
+                        flight=flight,
+                        row=row,
+                        seat=seat
+                ).exists():
+                    raise ValidationError(
+                        {
+                            'seat': f'Seat {seat} '
+                                 f'(row {row}) is '
+                                 f'already taken for this flight.'
+                        }
+                    )
+
+                Ticket.objects.create(
+                    order=instance,
+                    flight=flight,
+                    row=row,
+                    **ticket_data
+                )
+
+        return instance

@@ -1,4 +1,5 @@
 from django.db import models
+from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
 
@@ -49,6 +50,10 @@ class Airplane(models.Model):
     seats_in_row = models.IntegerField()
     airplane_type = models.ForeignKey(AirplaneType, on_delete=models.CASCADE)
 
+    @property
+    def total_count_of_seats(self):
+        return self.rows * self.seats_in_row
+
     def __str__(self):
         return f"{self.name} ({self.airplane_type})"
 
@@ -79,7 +84,10 @@ class Order(models.Model):
 class Ticket(models.Model):
     row = models.IntegerField()
     seat = models.IntegerField()
-    flight = models.ForeignKey(Flight, on_delete=models.CASCADE)
+    flight = models.ForeignKey(
+        Flight,
+        on_delete=models.CASCADE,
+    )
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
@@ -87,7 +95,32 @@ class Ticket(models.Model):
     )
 
     class Meta:
-        unique_together = ('flight', 'row', 'seat')
+        # Correctly defined metadata for the model
+        constraints = [
+            models.UniqueConstraint(
+                fields=['row', 'seat', 'flight'],
+                name='unique_ticket_for_flight'
+            )
+        ]
+
+    @staticmethod
+    def validate_seat(seat: int, row: int,
+                      num_rows: int,
+                      num_seats: int,
+                      error_to_raise):
+        if not (1 <= seat <= num_seats):
+            raise error_to_raise({
+                "seat": f"seat must be in the range [1, {num_seats}]"
+            })
+        if not (1 <= row <= num_rows):
+            raise error_to_raise({
+                "row": f"row must be in the range [1, {num_rows}]"
+            })
+
+    def clean(self):
+        Ticket.validate_seat(
+            self.seat, self.row, self.flight.airplane.rows, self.flight.airplane.seats_in_row, ValidationError
+        )
 
     def __str__(self):
         return (f"Ticket {self.row}-{self.seat} "

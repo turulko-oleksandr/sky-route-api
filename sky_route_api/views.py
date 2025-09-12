@@ -4,11 +4,13 @@ from rest_framework import viewsets
 from rest_framework.pagination import PageNumberPagination
 
 from accounts.permissions import IsAdminOrIfAuthenticatedReadOnly
-from sky_route_api.models import Airport, Route, Crew, Airplane, Flight
+from sky_route_api.models import Airport, Route, Crew, Airplane, Flight, Order
 from sky_route_api.serializers import (AirPortSerializer, RouteSerializer,
                                        CrewSerializer, AirplaneSerializer,
                                        FlightSerializer,
-                                       FlightListSerializer, FlightDetailSerializer)
+                                       FlightListSerializer,
+                                       FlightDetailSerializer,
+                                       OrderSerializer)
 
 
 class SmallPagePagination(PageNumberPagination):
@@ -48,11 +50,11 @@ class AirplaneViewSet(viewsets.ModelViewSet):
 class FlightViewSet(viewsets.ModelViewSet):
     queryset = (
         Flight.objects.all()
-        .select_related("route", "airplane")
+        .select_related('route', 'airplane')
         .annotate(
             tickets_available=(
-                F("airplane__rows") * F("airplane__seats_in_row")
-                - Count("ticket")
+                F('airplane__rows') * F('airplane__seats_in_row')
+                - Count('ticket')
             )
         )
     )
@@ -60,13 +62,16 @@ class FlightViewSet(viewsets.ModelViewSet):
     permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
 
     def get_queryset(self):
-        departure_date = self.request.query_params.get("date")
-        route_id_str = self.request.query_params.get("route")
+        departure_date = self.request.query_params.get('date')
+        route_id_str = self.request.query_params.get('route')
 
         queryset = self.queryset
 
         if departure_date:
-            departure_date = datetime.strptime(departure_date, "%Y-%m-%d").date()
+            departure_date = (datetime.strptime(
+                departure_date,
+                '%Y-%m-%d'
+            ).date())
             queryset = queryset.filter(departure_time__date=departure_date)
 
         if route_id_str:
@@ -75,10 +80,21 @@ class FlightViewSet(viewsets.ModelViewSet):
         return queryset
 
     def get_serializer_class(self):
-        if self.action == "list":
+        if self.action == 'list':
             return FlightListSerializer
 
-        if self.action == "retrieve":
+        if self.action == 'retrieve':
             return FlightDetailSerializer
 
         return FlightSerializer
+
+
+class OrderViewSet(viewsets.ModelViewSet):
+    queryset = Order.objects.all()
+    serializer_class = OrderSerializer
+
+    def get_queryset(self):
+        return self.queryset.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
