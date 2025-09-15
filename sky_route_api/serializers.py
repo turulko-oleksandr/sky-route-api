@@ -146,38 +146,42 @@ class FlightDetailSerializer(FlightListSerializer):
 class TicketSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ticket
-        fields = ["id", "row", "seat", "flight", "order"]
-
-    def validate(self, attrs):
-        ticket = Ticket(**attrs)
-        try:
-            ticket.full_clean()
-        except ValidationError as e:
-            raise ValidationError(e.message_dict)
-        return attrs
+        fields = ("id", "row", "seat")
 
 
-class TicketForOrderSerializer(serializers.ModelSerializer):
+class TicketListSerializer(serializers.ModelSerializer):
+    flight = FlightListSerializer(read_only=True, many=False)
+    customer = serializers.CharField(
+        read_only=True,
+        source="order.user",
+    )
+
     class Meta:
         model = Ticket
-        fields = ["row", "seat"]
+        fields = ("id", "row", "seat", "flight", "customer")
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    tickets = TicketForOrderSerializer(many=True)
+    tickets = TicketSerializer(
+        many=True,
+        read_only=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = Order
-        fields = ["id", "flight", "tickets", "created_at"]
+        fields = ("id", "created_at", "tickets", "flight")
 
     def create(self, validated_data):
         tickets_data = validated_data.pop("tickets", [])
         with transaction.atomic():
             order = Order.objects.create(**validated_data)
             for ticket_data in tickets_data:
-                ticket = Ticket(order=order, flight=order.flight, **ticket_data)
-                ticket.full_clean()
-                ticket.save()
+                Ticket.objects.create(
+                    order=order,
+                    flight=order.flight,
+                    **ticket_data
+                )
         return order
 
     def update(self, instance, validated_data):
@@ -189,8 +193,9 @@ class OrderSerializer(serializers.ModelSerializer):
 
             instance.tickets.all().delete()
             for ticket_data in tickets_data:
-                ticket = Ticket(order=instance, flight=instance.flight, **ticket_data)
-                ticket.full_clean()
-                ticket.save()
-
+                Ticket.objects.create(
+                    order=instance,
+                    flight=instance.flight,
+                    **ticket_data
+                )
         return instance

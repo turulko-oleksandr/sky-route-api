@@ -3,19 +3,21 @@ from django.db.models import F, Count, ExpressionWrapper, IntegerField
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from jsonschema import ValidationError
-from rest_framework import viewsets
+from rest_framework import viewsets, mixins
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
+from rest_framework.viewsets import GenericViewSet
 
 from accounts.permissions import IsAdminOrIfAuthenticatedReadOnly
 from sky_route_api.models import (
     Airport, Route, Crew,
-    Airplane, Flight, Order
+    Airplane, Flight, Order, Ticket
 )
 from sky_route_api.serializers import (
     AirPortSerializer, RouteSerializer, CrewSerializer,
     AirplaneSerializer, FlightSerializer,
-    FlightDetailSerializer, OrderSerializer, AirplaneListSerializer, RouteListSerializer, FlightListSerializer
+    FlightDetailSerializer, OrderSerializer, AirplaneListSerializer, RouteListSerializer, FlightListSerializer,
+    TicketListSerializer, TicketSerializer
 )
 
 
@@ -141,13 +143,41 @@ class FlightViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class OrderViewSet(viewsets.ModelViewSet):
-    queryset = Order.objects.all().prefetch_related("tickets")
-    serializer_class = OrderSerializer
+class TicketViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    GenericViewSet,
+):
+    queryset = (Ticket.objects
+                .select_related("flight__route", "order", "flight__airplane")
+                .prefetch_related("flight__crew")
+                .all())
+    pagination_class = SmallPagePagination
     permission_classes = (IsAuthenticated,)
 
     def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+        queryset = self.queryset.filter(order__user=self.request.user)
+        return queryset
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return TicketListSerializer
+        return TicketSerializer
+
+
+class OrderViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    GenericViewSet,
+):
+    queryset = Order.objects.prefetch_related("tickets__flight")
+    serializer_class = OrderSerializer
+    pagination_class = BigPagePagination
+    permission_classes = (IsAuthenticated,)
+
+    def get_queryset(self):
+        queryset = self.queryset.filter(user=self.request.user)
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
