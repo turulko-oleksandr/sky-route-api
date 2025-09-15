@@ -33,6 +33,7 @@ class BigPagePagination(PageNumberPagination):
 
 class AirPortViewSet(viewsets.ModelViewSet):
     queryset = Airport.objects.all()
+    permission_classes = (IsAdminOrIfAuthenticatedReadOnly, )
     serializer_class = AirPortSerializer
     pagination_class = BigPagePagination
 

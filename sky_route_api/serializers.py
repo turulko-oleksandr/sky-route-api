@@ -1,6 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from sky_route_api.models import (
     Airport, Route, Flight,
@@ -176,12 +177,19 @@ class OrderSerializer(serializers.ModelSerializer):
         tickets_data = validated_data.pop("tickets", [])
         with transaction.atomic():
             order = Order.objects.create(**validated_data)
-            for ticket_data in tickets_data:
-                Ticket.objects.create(
-                    order=order,
-                    flight=order.flight,
-                    **ticket_data
-                )
+            errors = {}
+            for index, ticket_data in enumerate(tickets_data):
+                try:
+                    Ticket.objects.create(
+                        order=order,
+                        flight=order.flight,
+                        **ticket_data
+                    )
+                except DjangoValidationError as e:
+                    errors[f'tickets[{index}]'] = e.messages
+
+            if errors:
+                raise DRFValidationError(detail=errors)
         return order
 
     def update(self, instance, validated_data):
@@ -192,10 +200,17 @@ class OrderSerializer(serializers.ModelSerializer):
             instance.save()
 
             instance.tickets.all().delete()
-            for ticket_data in tickets_data:
-                Ticket.objects.create(
-                    order=instance,
-                    flight=instance.flight,
-                    **ticket_data
-                )
+            errors = {}
+            for index, ticket_data in enumerate(tickets_data):
+                try:
+                    Ticket.objects.create(
+                        order=instance,
+                        flight=instance.flight,
+                        **ticket_data
+                    )
+                except DjangoValidationError as e:
+                    errors[f'tickets[{index}]'] = e.messages
+
+            if errors:
+                raise DRFValidationError(detail=errors)
         return instance
