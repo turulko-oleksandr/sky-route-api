@@ -2,6 +2,7 @@ from datetime import datetime
 from django.db.models import F, Count
 from rest_framework import viewsets
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
 
 from accounts.permissions import IsAdminOrIfAuthenticatedReadOnly
 from sky_route_api.models import (
@@ -11,7 +12,7 @@ from sky_route_api.models import (
 from sky_route_api.serializers import (
     AirPortSerializer, RouteSerializer, CrewSerializer,
     AirplaneSerializer, FlightSerializer,
-    FlightDetailSerializer, OrderSerializer
+    FlightDetailSerializer, OrderSerializer, AirplaneListSerializer
 )
 
 
@@ -35,18 +36,25 @@ class RouteViewSet(viewsets.ModelViewSet):
     queryset = Route.objects.all()
     serializer_class = RouteSerializer
     pagination_class = BigPagePagination
-
+    permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
 
 class CrewViewSet(viewsets.ModelViewSet):
     queryset = Crew.objects.all()
     serializer_class = CrewSerializer
     pagination_class = BigPagePagination
+    permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
 
 
 class AirplaneViewSet(viewsets.ModelViewSet):
     queryset = Airplane.objects.all()
     serializer_class = AirplaneSerializer
     pagination_class = SmallPagePagination
+    permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return AirplaneListSerializer
+        return AirplaneSerializer
 
 
 class FlightViewSet(viewsets.ModelViewSet):
@@ -67,6 +75,7 @@ class FlightViewSet(viewsets.ModelViewSet):
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().prefetch_related("tickets")
     serializer_class = OrderSerializer
+    permission_classes = (IsAuthenticated,)
 
     def get_queryset(self):
         return self.queryset.filter(user=self.request.user)

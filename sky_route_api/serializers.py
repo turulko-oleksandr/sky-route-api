@@ -45,6 +45,17 @@ class AirplaneSerializer(serializers.ModelSerializer):
         read_only_fields = ["capacity"]
 
 
+class AirplaneListSerializer(serializers.ModelSerializer):
+    airplane_type = serializers.SlugRelatedField(
+        read_only=True,
+        slug_field="name",
+    )
+
+    class Meta:
+        model = Airplane
+        fields = ("id", "name", "rows", "seats_in_row", "airplane_type", "capacity")
+
+
 class FlightSerializer(serializers.ModelSerializer):
     route = serializers.PrimaryKeyRelatedField(queryset=Route.objects.all())
     airplane = serializers.PrimaryKeyRelatedField(queryset=Airplane.objects.all())
