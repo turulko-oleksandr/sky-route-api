@@ -39,11 +39,10 @@ class RouteListSerializer(serializers.ModelSerializer):
         fields = ("id", "source", "destination", "distance")
 
 
-
 class CrewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Crew
-        fields = ["id", "first_name", "last_name"]
+        fields = ["id", "first_name", "last_name", "full_name"]
 
 
 class AirplaneTypeSerializer(serializers.ModelSerializer):
@@ -92,23 +91,56 @@ class TakenSeatsSerializer(serializers.ModelSerializer):
         fields = ["row", "seat"]
 
 
-class FlightDetailSerializer(serializers.ModelSerializer):
-    route = RouteSerializer(read_only=True)
-    airplane = AirplaneSerializer(read_only=True)
-    crew = CrewSerializer(many=True, read_only=True)
-    taken_seats = serializers.SerializerMethodField()
+class RouteDetailSerializer(RouteListSerializer):
+    class Meta:
+        model = Route
+        fields = ("source", "destination")
+
+
+class AirPortDetailSerializer(AirplaneListSerializer):
+    class Meta:
+        model = Airplane
+        fields = ("name", "rows", "seats_in_row", "airplane_type", "capacity")
+
+
+class FlightListSerializer(serializers.ModelSerializer):
+    route = RouteDetailSerializer(
+        read_only=True,
+        many=False,
+    )
+    airplane = AirPortDetailSerializer(
+        read_only=True,
+        many=False,
+    )
+    crew = serializers.SlugRelatedField(
+        many=True,
+        read_only=True,
+        slug_field="full_name",
+    )
+    tickets_available = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Flight
-        fields = [
-            "id", "departure_time", "arrival_time",
-            "route", "airplane", "crew", "taken_seats"
-        ]
+        fields = (
+            "id",
+            "route",
+            "airplane",
+            "departure_time",
+            "arrival_time",
+            "flight_time", "crew",
+            "tickets_available",
+        )
 
-    @staticmethod
-    def get_taken_seats(obj):
-        tickets = obj.tickets.all()
-        return TakenSeatsSerializer(tickets, many=True).data
+
+class FlightDetailSerializer(FlightListSerializer):
+    route = RouteListSerializer(
+        read_only=True,
+        many=False,
+    )
+    airplane = AirplaneSerializer(
+        read_only=True,
+        many=False,
+    )
 
 
 class TicketSerializer(serializers.ModelSerializer):

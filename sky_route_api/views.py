@@ -1,5 +1,8 @@
 from datetime import datetime
-from django.db.models import F, Count
+from django.db.models import F, Count, ExpressionWrapper, IntegerField
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from jsonschema import ValidationError
 from rest_framework import viewsets
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
@@ -12,7 +15,7 @@ from sky_route_api.models import (
 from sky_route_api.serializers import (
     AirPortSerializer, RouteSerializer, CrewSerializer,
     AirplaneSerializer, FlightSerializer,
-    FlightDetailSerializer, OrderSerializer, AirplaneListSerializer, RouteListSerializer
+    FlightDetailSerializer, OrderSerializer, AirplaneListSerializer, RouteListSerializer, FlightListSerializer
 )
 
 
@@ -64,17 +67,78 @@ class AirplaneViewSet(viewsets.ModelViewSet):
 
 class FlightViewSet(viewsets.ModelViewSet):
     queryset = (
-        Flight.objects.all()
-        .select_related("route", "airplane")
-        .prefetch_related("crew", "tickets")
-        .annotate(
-            tickets_available=(
-                    F("airplane__rows") * F("airplane__seats_in_row") - Count("tickets")
-            )
-        )
+        Flight.objects
+        .select_related("route__source", "route__destination", "airplane")
+        .prefetch_related("crew")
     )
     serializer_class = FlightSerializer
+    pagination_class = SmallPagePagination
     permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
+
+    def get_queryset(self):
+        source = self.request.query_params.get("source")
+        destination = self.request.query_params.get("destination")
+        arrival_before = self.request.query_params.get("arrival_before")
+        queryset = self.queryset.annotate(
+            tickets_available=ExpressionWrapper(
+                F("airplane__rows") * F("airplane__seats_in_row") - Count("tickets"),
+                output_field=IntegerField()
+            )
+        )
+
+        if source:
+            queryset = queryset.filter(route__source__name__icontains=source)
+
+        if destination:
+            queryset = queryset.filter(route__destination__name__icontains=destination)
+
+        if arrival_before:
+            try:
+                arrival_before_dt = datetime.fromisoformat(arrival_before)
+                queryset = queryset.filter(arrival_time__lt=arrival_before_dt)
+            except ValueError:
+                raise ValidationError(
+                    "arrival_before must be in ISO format (e.g., '2025-15-09T14:00')"
+                )
+
+        return queryset
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return FlightListSerializer
+        if self.action == "retrieve":
+            return FlightDetailSerializer
+        return FlightSerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="source",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by source airport name (case-insensitive, partial match)",
+            ),
+            OpenApiParameter(
+                name="destination",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by destination airport name (case-insensitive, partial match)",
+            ),
+            OpenApiParameter(
+                name="arrival_before",
+                type=OpenApiTypes.DATETIME,
+                location=OpenApiParameter.QUERY,
+                description="Filter flights arriving before a specific datetime (ISO format: YYYY-MM-DDTHH:MM)",
+            ),
+        ],
+        responses={
+            200: FlightListSerializer,
+            201: FlightSerializer,
+            400: {"detail": "arrival_before must be in ISO format (e.g., '2025-15-09T14:00')"},
+        }
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class OrderViewSet(viewsets.ModelViewSet):
