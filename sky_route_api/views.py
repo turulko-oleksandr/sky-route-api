@@ -12,7 +12,7 @@ from sky_route_api.models import (
 from sky_route_api.serializers import (
     AirPortSerializer, RouteSerializer, CrewSerializer,
     AirplaneSerializer, FlightSerializer,
-    FlightDetailSerializer, OrderSerializer, AirplaneListSerializer
+    FlightDetailSerializer, OrderSerializer, AirplaneListSerializer, RouteListSerializer
 )
 
 
@@ -33,10 +33,15 @@ class AirPortViewSet(viewsets.ModelViewSet):
 
 
 class RouteViewSet(viewsets.ModelViewSet):
-    queryset = Route.objects.all()
+    queryset = Route.objects.select_related("source", "destination").all()
     serializer_class = RouteSerializer
     pagination_class = BigPagePagination
     permission_classes = (IsAdminOrIfAuthenticatedReadOnly,)
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return RouteListSerializer
+        return RouteSerializer
 
 class CrewViewSet(viewsets.ModelViewSet):
     queryset = Crew.objects.all()
