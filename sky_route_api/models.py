@@ -80,7 +80,7 @@ class Crew(models.Model):
     last_name = models.CharField(max_length=100)
 
     @property
-    def full_name(self):
+    def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"
 
     def __str__(self):
@@ -97,7 +97,7 @@ class Airplane(models.Model):
     airplane_type = models.ForeignKey(AirplaneType, on_delete=models.CASCADE)
 
     @property
-    def capacity(self):
+    def capacity(self) -> int:
         return self.rows * self.seats_in_row
 
     def __str__(self):
@@ -115,7 +115,7 @@ class Flight(models.Model):
     crew = models.ManyToManyField(Crew)
 
     @property
-    def flight_time(self):
+    def flight_time(self) -> str:
         duration: timedelta = self.arrival_time - self.departure_time
         hours, remainder = divmod(duration.total_seconds(), 3600)
         minutes = remainder // 60
