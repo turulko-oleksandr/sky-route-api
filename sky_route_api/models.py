@@ -1,14 +1,34 @@
+import os
+import uuid
+
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from datetime import timedelta
 
+from django.utils.text import slugify
+
 from accounts.models import User
+
+
+def photo_file_path(part_root: str):
+    def file_path(instance, filename):
+        _, extension = os.path.splitext(filename)
+        filename = f"{slugify(str(instance))}-{uuid.uuid4()}{extension}"
+
+        return os.path.join(f"uploads/{part_root}/", filename)
+
+    return file_path
+
+
+def airport_image_file_path(instance, filename):
+    return photo_file_path("airports")(instance, filename)
 
 
 class Airport(models.Model):
     name = models.CharField(max_length=100, unique=True)
     closest_big_city = models.CharField(max_length=100)
+    image = models.ImageField(upload_to=airport_image_file_path, null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.closest_big_city})"

@@ -13,7 +13,7 @@ from sky_route_api.models import (
 class AirPortSerializer(serializers.ModelSerializer):
     class Meta:
         model = Airport
-        fields = ["id", "name", "closest_big_city"]
+        fields = ["id", "name", "closest_big_city", "image"]
 
 
 class RouteSerializer(serializers.ModelSerializer):
