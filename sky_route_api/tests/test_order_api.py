@@ -36,8 +36,7 @@ class OrderApiTests(APITestCase):
     def test_order_create_success(self):
         self.client.force_authenticate(user=self.user)
         data = {
-            "flight": self.flight.id,
-            "tickets": [{"row": 1, "seat": 1}, {"row": 1, "seat": 2}],
+            "tickets": [{"flight": self.flight.id,"row": 1, "seat": 1}, {"flight": self.flight.id,"row": 1, "seat": 2}],
         }
         response = self.client.post(reverse("sky_route_api:order-list"), data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -47,8 +46,7 @@ class OrderApiTests(APITestCase):
     def test_order_create_invalid_ticket(self):
         self.client.force_authenticate(user=self.user)
         data = {
-            "flight": self.flight.id,
-            "tickets": [{"row": 1, "seat": 1}, {"row": 10, "seat": 10}],
+            "tickets": [{"flight": self.flight.id,"row": 1, "seat": 1}, {"flight": self.flight.id,"row": 10, "seat": 10}],
         }
         response = self.client.post(
             reverse("sky_route_api:order-list"), data, format="json"
@@ -59,7 +57,7 @@ class OrderApiTests(APITestCase):
 
     def test_order_list_for_user(self):
         self.client.force_authenticate(user=self.user)
-        Order.objects.create(user=self.user, flight=self.flight)
+        Order.objects.create(user=self.user)
         response = self.client.get(reverse("sky_route_api:order-list"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 1)

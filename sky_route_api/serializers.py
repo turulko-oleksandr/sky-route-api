@@ -145,9 +145,11 @@ class FlightDetailSerializer(FlightListSerializer):
 
 
 class TicketSerializer(serializers.ModelSerializer):
+    flight = serializers.PrimaryKeyRelatedField(read_only=False, queryset=Flight.objects.all())
+
     class Meta:
         model = Ticket
-        fields = ("id", "row", "seat")
+        fields = ("id", "row", "seat", "flight")
 
 
 class TicketListSerializer(serializers.ModelSerializer):
@@ -163,54 +165,48 @@ class TicketListSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    tickets = TicketSerializer(
-        many=True,
-        read_only=False,
-        allow_null=True,
-    )
+    tickets = TicketSerializer(many=True)
 
     class Meta:
         model = Order
-        fields = ("id", "created_at", "tickets", "flight")
+        fields = ("id", "created_at", "tickets")
 
     def create(self, validated_data):
         tickets_data = validated_data.pop("tickets", [])
         with transaction.atomic():
             order = Order.objects.create(**validated_data)
             errors = {}
+
             for index, ticket_data in enumerate(tickets_data):
                 try:
-                    Ticket.objects.create(
-                        order=order,
-                        flight=order.flight,
-                        **ticket_data
-                    )
+                    Ticket.objects.create(order=order, **ticket_data)
                 except DjangoValidationError as e:
-                    errors[f'tickets[{index}]'] = e.messages
+                    errors[f"tickets[{index}]"] = e.messages
 
             if errors:
                 raise DRFValidationError(detail=errors)
+
         return order
 
     def update(self, instance, validated_data):
         tickets_data = validated_data.pop("tickets", [])
         with transaction.atomic():
+            # обновляємо сам Order
             for attr, value in validated_data.items():
                 setattr(instance, attr, value)
             instance.save()
 
+            # перевидаємо всі квитки
             instance.tickets.all().delete()
             errors = {}
+
             for index, ticket_data in enumerate(tickets_data):
                 try:
-                    Ticket.objects.create(
-                        order=instance,
-                        flight=instance.flight,
-                        **ticket_data
-                    )
+                    Ticket.objects.create(order=instance, **ticket_data)
                 except DjangoValidationError as e:
-                    errors[f'tickets[{index}]'] = e.messages
+                    errors[f"tickets[{index}]"] = e.messages
 
             if errors:
                 raise DRFValidationError(detail=errors)
+
         return instance

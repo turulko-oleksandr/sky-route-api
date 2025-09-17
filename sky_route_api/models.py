@@ -139,19 +139,12 @@ class Flight(models.Model):
 class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    flight = models.ForeignKey(Flight, on_delete=models.CASCADE)
 
     def __str__(self):
         return f"Order {self.id} by {self.user} on {self.created_at:%Y-%m-%d %H:%M}"
 
     class Meta:
         ordering = ["-created_at"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["user", "flight"],
-                name="unique_order_per_user_flight",
-            )
-        ]
 
 
 class Ticket(models.Model):
@@ -196,4 +189,7 @@ class Ticket(models.Model):
         return super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Ticket {self.row}-{self.seat} | Flight {self.flight.id} | Order {self.order.id}"
+        return (
+            f"Ticket {self.row}-{self.seat} | "
+            f"Flight {self.flight.id} | Order {self.order.id}"
+        )

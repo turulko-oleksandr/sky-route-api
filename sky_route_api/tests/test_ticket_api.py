@@ -31,7 +31,7 @@ class TicketApiTests(APITestCase):
             departure_time=datetime.now(),
             arrival_time=datetime.now() + timedelta(hours=1),
         )
-        self.order = Order.objects.create(user=self.user, flight=self.flight)
+        self.order = Order.objects.create(user=self.user)
         self.ticket = Ticket.objects.create(
             order=self.order, flight=self.flight, row=1, seat=1
         )

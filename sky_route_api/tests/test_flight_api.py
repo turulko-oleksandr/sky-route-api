@@ -63,7 +63,7 @@ class FlightApiTests(APITestCase):
         response = self.client.get(reverse("sky_route_api:flight-list"))
         self.assertEqual(response.data["results"][0]["tickets_available"], 4)
 
-        order = Order.objects.create(user=self.user, flight=self.flight)
+        order = Order.objects.create(user=self.user)
         Ticket.objects.create(order=order, flight=self.flight, row=1, seat=1)
 
         response = self.client.get(reverse("sky_route_api:flight-list"))
